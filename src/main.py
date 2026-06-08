@@ -23,7 +23,7 @@ def count_hidden_files(disk: str) -> int:
             "-Command",
             f"$count=0; Get-ChildItem -Path '{disk}:\\*' -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {{ if ($_.Attributes -band [System.IO.FileAttributes]::Hidden -or $_.Attributes -band [System.IO.FileAttributes]::System) {{ $count++ }} }}; Write-Output $count"
         ]
-        pr = subprocess.Popen(ps_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pr = subprocess.Popen(ps_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
         stdout, _ = pr.communicate()
         return int(stdout.decode().strip())
     except:
@@ -34,7 +34,8 @@ def scan(disk: str) -> dict:
         pr = subprocess.Popen(
             ["ATTRIB", "/d", "/s", "-r", "-h", "-s", f"{disk}:*"],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         stdout, stderr = pr.communicate()
         if pr.returncode == 0:
