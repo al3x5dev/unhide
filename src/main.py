@@ -1,3 +1,4 @@
+import asyncio
 import flet as ft
 import os, string, subprocess
 
@@ -14,6 +15,38 @@ def get_available_drives():
             if letter != "C":
                 drives.append(letter)
     return drives  # ej. ['C', 'D', 'E']
+
+def count_hidden_files(disk: str) -> int:
+    try:
+        ps_cmd = [
+            "powershell",
+            "-Command",
+            f"$count=0; Get-ChildItem -Path '{disk}:\\*' -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {{ if ($_.Attributes -band [System.IO.FileAttributes]::Hidden -or $_.Attributes -band [System.IO.FileAttributes]::System) {{ $count++ }} }}; Write-Output $count"
+        ]
+        pr = subprocess.Popen(ps_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, _ = pr.communicate()
+        return int(stdout.decode().strip())
+    except:
+        return -1
+
+def scan(disk: str) -> dict:
+    try:
+        pr = subprocess.Popen(
+            ["ATTRIB", "/d", "/s", "-r", "-h", "-s", f"{disk}:*"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = pr.communicate()
+        if pr.returncode == 0:
+            return {"success": True, "message": "Operación completada exitosamente", "error": None}
+        else:
+            return {"success": False, "message": "", "error": stderr.decode()}
+    except FileNotFoundError:
+        return {"success": False, "message": "", "error": "ATTRIB no encontrado en el sistema"}
+    except PermissionError:
+        return {"success": False, "message": "", "error": "Permiso denegado. Ejecutar como Administrador"}
+    except Exception as e:
+        return {"success": False, "message": "", "error": str(e)}
 
 async def main(page: ft.Page):
     page.title = APP_NAME
@@ -35,46 +68,55 @@ async def main(page: ft.Page):
     await page.window.center()
 
 
-
-
-
-
-
     async def iniciar_click(e):
-        unidad = drive_dropdown.value
-        
+        try:
+            unidad = drive_dropdown.value
+            if not unidad:
+                return
 
-        output.controls.clear()
-        output.controls.append(ft.Row(
-            [ft.Text(f"Procesando unidad {unidad}:\\...")],
-            alignment=ft.MainAxisAlignment.CENTER,
-        ))
-        output.controls.append(ft.Image(img("Magnifying Glass Tilted Right.webp"),width=180,height=180))
-        page.update()
-
-        """
-        proc = subprocess.Popen(
-            ["ATTRIB", "/d", "/s", "-r", "-h", "-s", f"{unidad}:\\*"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-
-        for line in proc.stdout:
-            log_output.controls.append(ft.Text(line.strip(), size=12))
+            output.controls.clear()
+            output.controls.append(ft.Row(
+                [ft.Text(f"Procesando unidad {unidad}:\\...")],
+                alignment=ft.MainAxisAlignment.CENTER,
+            ))
+            output.controls.append(ft.Image(img("Magnifying Glass Tilted Right.webp"),width=180,height=180))
             page.update()
 
-        proc.wait()
+            hidden_before = await asyncio.to_thread(count_hidden_files, unidad)
+            result = await asyncio.to_thread(scan, unidad)
+            hidden_after = await asyncio.to_thread(count_hidden_files, unidad) if result["success"] else -1
 
-        if proc.returncode == 0:
-            log_output.controls.append(ft.Text("Proceso finalizado exitosamente.", weight=ft.FontWeight.BOLD))
-        else:
-            log_output.controls.append(ft.Text("Ha ocurrido un error.", color=ft.Colors.RED))
-        page.update()
+            output.controls.clear()
 
-        btn.disabled=True
+            if result["success"]:
+                count = hidden_before - hidden_after if hidden_before >= 0 and hidden_after >= 0 else -1
+                output.controls.append(ft.Row(
+                    [ft.Text("✓  ", color=ft.Colors.GREEN, size=28)],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ))
+                output.controls.append(ft.Row(
+                    [ft.Text(result["message"], color=ft.Colors.GREEN)],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ))
+                if count >= 0:
+                    output.controls.append(ft.Row(
+                        [ft.Text(f"Archivos recuperados: {count}", weight=ft.FontWeight.BOLD)],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ))
+            else:
+                output.controls.append(ft.Row(
+                    [ft.Text("✗  ", color=ft.Colors.RED, size=28)],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ))
+                output.controls.append(ft.Row(
+                    [ft.Text(f"Error: {result['error']}", color=ft.Colors.RED)],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ))
+        except Exception as ex:
+            output.controls.clear()
+            output.controls.append(ft.Text(f"Error inesperado: {ex}", color=ft.Colors.RED))
+
         page.update()
-        """
 
     def habilitar_btn():
         btn.disabled=False
@@ -114,7 +156,7 @@ async def main(page: ft.Page):
                     spacing=18
                 )
         ]),
-        ft.Text(f'Made whit ❤️ by @al3x5dev', color=ft.Colors.GREY_500)
+        ft.Text(f'Made with ❤️ by @al3x5dev', color=ft.Colors.GREY_500)
     )
 
 
